@@ -1,16 +1,22 @@
 terraform {
   required_providers {
     aws = {
-      source = "hashicorp/aws"
+      source  = "hashicorp/aws"
+      version = "~> 3.0.0"
     }
     tls = {
-      source = "hashicorp/tls"
+      source  = "hashicorp/tls"
+      version = "~> 3.0.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.0.0"
     }
   }
 }
 
 provider "aws" {
-  region     = "us-east-1"
+  region = "us-east-1"
 }
 
 # Get latest Ubuntu image
@@ -48,7 +54,7 @@ resource "aws_subnet" "cloudhsm_v2_subnets" {
 # Create Security Group for SSH
 resource "aws_security_group" "allow_ssh" {
   name        = "allow_ssh"
-  description = "Allow SSH inbound traffic"
+  description = "Allow SSH inbound traffic; Allow all outbound traffic"
   vpc_id      = aws_vpc.cloudhsm_v2_vpc.id
 
   ingress {
@@ -117,7 +123,7 @@ resource "aws_key_pair" "vault" {
 # Create Vault EC2 instance
 resource "aws_instance" "vault" {
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t3.micro"
+  instance_type          = "t2.micro"
   subnet_id              = aws_subnet.cloudhsm_v2_subnets.id
   vpc_security_group_ids = [aws_cloudhsm_v2_cluster.cloudhsm_v2_cluster.security_group_id, aws_security_group.allow_ssh.id]
 
@@ -128,10 +134,12 @@ resource "aws_instance" "vault" {
   }
 }
 
-output "hsm_cluster_id" {
-  value = aws_cloudhsm_v2_cluster.cloudhsm_v2_cluster.cluster_id
+# Create private key file locally
+resource "local_file" "private_key" {
+  content  = tls_private_key.vault.private_key_pem
+  filename = "vault-key.pem"
 }
 
-output "private_key" {
-  value = tls_private_key.vault.private_key_pem
+output "hsm_cluster_id" {
+  value = aws_cloudhsm_v2_cluster.cloudhsm_v2_cluster.cluster_id
 }

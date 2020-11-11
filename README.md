@@ -11,12 +11,11 @@ $ terraform init
 
 $ terraform apply -auto-approve
 ...
-Apply complete! Resources: 10 added, 0 changed, 0 destroyed.
+Apply complete! Resources: 11 added, 0 changed, 0 destroyed.
 
 Outputs:
 
-hsm_cluster_id = cluster-cjk26onnbtr
-...
+hsm_cluster_id = cluster-wiu5rykdhgf
 ```
 
 ## Initialize CloudHSM
