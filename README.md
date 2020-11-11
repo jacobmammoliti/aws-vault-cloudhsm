@@ -15,13 +15,14 @@ Apply complete! Resources: 11 added, 0 changed, 0 destroyed.
 
 Outputs:
 
+ec2_public_ip = 3.83.107.201
 hsm_cluster_id = cluster-wiu5rykdhgf
 ```
 
 ## Initialize CloudHSM
 
 ```bash
-$ export HSM_CLUSTER_ID=cluster-cjk26onnbtr
+$ export HSM_CLUSTER_ID=cluster-wiu5rykdhgf
 
 $ aws cloudhsmv2 describe-clusters --filters clusterIds=$HSM_CLUSTER_ID \
   --output text --query 'Clusters[].Certificates.ClusterCsr' > $HSM_CLUSTER_ID_ClusterCsr.csr
@@ -32,8 +33,6 @@ Enter pass phrase for customerCA.key:
 Verifying - Enter pass phrase for customerCA.key:
 
 $ openssl req -new -x509 -days 3652 -key customerCA.key -out customerCA.crt
-
-
 Enter pass phrase for customerCA.key:
 ...
 
@@ -56,6 +55,10 @@ $ aws cloudhsmv2 initialize-cluster --cluster-id $HSM_CLUSTER_ID \
 ## Install Client on Vault Server and Create User for Vault
 
 ```bash
+$ scp -i vault-key.pem customerCA.crt ubuntu@3.83.107.201:customerCA.crt
+
+$ ssh -i vault-key.pem ubuntu@3.83.107.201
+
 $ sudo apt update
 
 $ wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Bionic/cloudhsm-client_latest_u18.04_amd64.deb
@@ -68,41 +71,46 @@ Processing triggers for ureadahead (0.100.0-21) ...
 Processing triggers for systemd (237-3ubuntu10.42) ...
 
 # get the IP of the HSM
-$ sudo /opt/cloudhsm/bin/configure -a 10.0.1.139
+$ sudo /opt/cloudhsm/bin/configure -a 10.0.1.130
 Updating server config in /opt/cloudhsm/etc/cloudhsm_client.cfg
 Updating server config in /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
 
-# copy customerCA.crt to /opt/cloudhsm/etc/customerCA.crt
+# move customerCA.crt to /opt/cloudhsm/etc/customerCA.crt
+$ sudo mv customerCA.crt /opt/cloudhsm/etc/customerCA.crt
 
 # switch to HSM cli
 $ /opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
 ...
-E2E enabled on server 0(10.0.1.139)
+E2E enabled on server 0(10.0.1.130)
 aws-cloudhsm>
 
 aws-cloudhsm>enable_e2e
-E2E enabled on server 0(10.0.1.139)
+E2E enabled on server 0(10.0.1.130)
 
 aws-cloudhsm>listUsers
+Users on server 0(10.0.1.130):
+Number of users found:2
+...
 
 aws-cloudhsm>loginHSM PRECO admin password
-loginHSM success on server 0(10.0.1.114)
+loginHSM success on server 0(10.0.1.130)
 
 aws-cloudhsm>changePswd PRECO admin arctiqvault
 ...
-changePswd success on server 0(10.0.1.139)
+changePswd success on server 0(10.0.1.130)
+
+aws-cloudhsm>logoutHSM
+logoutHSM success on server 0(10.0.1.130)
+
+aws-cloudhsm>loginHSM CO admin arctiqvault
+loginHSM success on server 0(10.0.1.130)
+
+aws-cloudhsm>createUser CU vault_user vaultarctiq
+Creating User vault_user(CU) on 1 nodes
+createUser success on server 0(10.0.1.130)
 
 aws-cloudhsm>quit
 disconnecting from servers, please wait...
-
-# switch back to HSM cli to create vault user
-$ /opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
-...
-E2E enabled on server 0(10.0.1.139)
-aws-cloudhsm>createUser CU vault_user vaultarctiq
-Creating User vault_user(CU) on 1 nodes
-createUser success on server 0(10.0.1.114)
-
 ```
 
 ## Install PKCS #11 Library

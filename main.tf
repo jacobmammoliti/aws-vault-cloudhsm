@@ -143,3 +143,7 @@ resource "local_file" "private_key" {
 output "hsm_cluster_id" {
   value = aws_cloudhsm_v2_cluster.cloudhsm_v2_cluster.cluster_id
 }
+
+output "ec2_public_ip" {
+  value = aws_instance.vault.public_ip
+}
