@@ -1,8 +1,31 @@
+# AWS CloudHSM with HashiCorp Vault
+
+## Deploy Everything with Terraform
+
+```bash
+$ export AWS_ACCESS_KEY_ID=""
+
+$ export AWS_SECRET_ACCESS_KEY=""
+
+$ terraform init
+
+$ terraform apply -auto-approve
+...
+Apply complete! Resources: 10 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+hsm_cluster_id = cluster-cjk26onnbtr
+...
+```
+
 ## Initialize CloudHSM
 
-```shell
-$ aws cloudhsmv2 describe-clusters --filters clusterIds=cluster-n5gphckjvn2 \
-  --output text --query 'Clusters[].Certificates.ClusterCsr' > cluster-n5gphckjvn2_ClusterCsr.csr
+```bash
+$ export HSM_CLUSTER_ID=cluster-cjk26onnbtr
+
+$ aws cloudhsmv2 describe-clusters --filters clusterIds=$HSM_CLUSTER_ID \
+  --output text --query 'Clusters[].Certificates.ClusterCsr' > $HSM_CLUSTER_ID_ClusterCsr.csr
 
 $ openssl genrsa -aes256 -out customerCA.key 2048
 ...
@@ -15,17 +38,15 @@ $ openssl req -new -x509 -days 3652 -key customerCA.key -out customerCA.crt
 Enter pass phrase for customerCA.key:
 ...
 
-$ openssl x509 -req -days 3652 -in cluster-n5gphckjvn2_ClusterCsr.csr \
-                              -CA customerCA.crt \
-                              -CAkey customerCA.key \
-                              -CAcreateserial \
-                              -out cluster-n5gphckjvn2_CustomerHsmCertificate.crt
+$ openssl x509 -req -days 3652 -in $HSM_CLUSTER_ID_ClusterCsr.csr \
+  -CA customerCA.crt -CAkey customerCA.key -CAcreateserial \
+  -out $HSM_CLUSTER_ID_CustomerHsmCertificate.crt
 ...
 Getting CA Private Key
 Enter pass phrase for customerCA.key:
 
-$ aws cloudhsmv2 initialize-cluster --cluster-id cluster-n5gphckjvn2 \
-  --signed-cert file://cluster-n5gphckjvn2_CustomerHsmCertificate.crt \
+$ aws cloudhsmv2 initialize-cluster --cluster-id $HSM_CLUSTER_ID \
+  --signed-cert file://$HSM_CLUSTER_ID_CustomerHsmCertificate.crt \
   --trust-anchor file://customerCA.crt
 {
     "State": "INITIALIZE_IN_PROGRESS",
@@ -35,7 +56,7 @@ $ aws cloudhsmv2 initialize-cluster --cluster-id cluster-n5gphckjvn2 \
 
 ## Install Client on Vault Server and Create User for Vault
 
-```shell
+```bash
 $ sudo apt update
 
 $ wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Bionic/cloudhsm-client_latest_u18.04_amd64.deb
@@ -47,10 +68,14 @@ $ sudo apt install -y ./cloudhsm-client_latest_u18.04_amd64.deb
 Processing triggers for ureadahead (0.100.0-21) ...
 Processing triggers for systemd (237-3ubuntu10.42) ...
 
+# get the IP of the HSM
 $ sudo /opt/cloudhsm/bin/configure -a 10.0.1.139
 Updating server config in /opt/cloudhsm/etc/cloudhsm_client.cfg
 Updating server config in /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
 
+# copy customerCA.crt to /opt/cloudhsm/etc/customerCA.crt
+
+# switch to HSM cli
 $ /opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
 ...
 E2E enabled on server 0(10.0.1.139)
@@ -61,23 +86,39 @@ E2E enabled on server 0(10.0.1.139)
 
 aws-cloudhsm>listUsers
 
-aws-cloudhsm>loginHSM PRECO admin arctiq2020
+aws-cloudhsm>loginHSM PRECO admin password
+loginHSM success on server 0(10.0.1.114)
+
+aws-cloudhsm>changePswd PRECO admin arctiqvault
 ...
 changePswd success on server 0(10.0.1.139)
 
-aws-cloudhsm> createUser CU vault_user vaultarctiq
-creating user on server 0(10.0.1.139) success
+aws-cloudhsm>quit
+disconnecting from servers, please wait...
+
+# switch back to HSM cli to create vault user
+$ /opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
+...
+E2E enabled on server 0(10.0.1.139)
+aws-cloudhsm>createUser CU vault_user vaultarctiq
+Creating User vault_user(CU) on 1 nodes
+createUser success on server 0(10.0.1.114)
+
 ```
 
 ## Install PKCS #11 Library
 
-```shell
+```bash
 $ sudo service cloudhsm-client start
 
 $ wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/Bionic/cloudhsm-client-pkcs11_latest_u18.04_amd64.deb
-
+...
+2020-11-11 02:21:33 (45.0 MB/s) - ‘cloudhsm-client-pkcs11_latest_u18.04_amd64.deb’ saved [237930/237930]
 
 $ sudo apt install -y ./cloudhsm-client-pkcs11_latest_u18.04_amd64.deb
+...
+Unpacking cloudhsm-client-pkcs11 (3.2.1-1) ...
+Setting up cloudhsm-client-pkcs11 (3.2.1-1) ...
 ```
 
 When the installation succeeds, the PKCS #11 library is available at /opt/cloudhsm/lib.
